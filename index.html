@@ -1,0 +1,1315 @@
+import React, { useMemo, useState } from "react";
+import {
+  Map,
+  Car,
+  Utensils,
+  Building2,
+  Mountain,
+  Train,
+  DollarSign,
+  Footprints,
+  ArrowRight,
+  Check,
+  CalendarDays,
+  Users,
+  Mail,
+  X,
+  CreditCard,
+} from "lucide-react";
+
+// -----------------------------
+// Data model
+// -----------------------------
+
+type Intensity = "Low" | "Medium" | "High";
+
+type TravelPlan = {
+  id: string;
+  badge: "EAST" | "WEST" | "ROAD TRIP" | "PARKS";
+  title: string;
+  subtitle: string; // route
+  highlights: { icon: React.ElementType; label: string }[];
+  intensity: Intensity;
+  budget: "$" | "$$" | "$$$";
+  transport: "Metro/Train" | "Drive" | "Fly + City";
+  walking: "Low" | "Medium" | "High";
+  heroNote: string;
+};
+
+type GuideItem = {
+  key: "food" | "transport" | "budget";
+  title: string;
+  desc: string;
+  icon: React.ElementType;
+  modalTitle: string;
+  bullets: string[];
+  ctaLabel: string;
+};
+
+const PLANS: TravelPlan[] = [
+  {
+    id: "east-city-grit",
+    badge: "EAST",
+    title: "City Grit",
+    subtitle: "NYC → Philadelphia → Washington, D.C.",
+    highlights: [
+      { icon: Building2, label: "Skylines" },
+      { icon: Train, label: "Metro-friendly" },
+      { icon: Utensils, label: "Deli & diners" },
+      { icon: Map, label: "Museums" },
+    ],
+    intensity: "Medium",
+    budget: "$$$",
+    transport: "Metro/Train",
+    walking: "High",
+    heroNote: "First-timer friendly. Big-city pace, zero car stress.",
+  },
+  {
+    id: "west-highway-legend",
+    badge: "WEST",
+    title: "Highway Legend",
+    subtitle: "Los Angeles → Santa Monica → (Optional) San Diego",
+    highlights: [
+      { icon: Car, label: "Drive" },
+      { icon: Map, label: "Coastline" },
+      { icon: Utensils, label: "Tacos" },
+      { icon: Building2, label: "Hollywood" },
+    ],
+    intensity: "High",
+    budget: "$$",
+    transport: "Drive",
+    walking: "Medium",
+    heroNote: "Rent a car, chase sunsets, live on the road.",
+  },
+  {
+    id: "cross-big-swing",
+    badge: "ROAD TRIP",
+    title: "The Big Swing",
+    subtitle: "NYC → Chicago → Las Vegas → LA",
+    highlights: [
+      { icon: Building2, label: "Cities" },
+      { icon: Car, label: "Desert runs" },
+      { icon: Map, label: "Neon nights" },
+      { icon: Utensils, label: "Steaks" },
+    ],
+    intensity: "High",
+    budget: "$$$",
+    transport: "Fly + City",
+    walking: "Medium",
+    heroNote: "All flavors of America — fast, loud, unforgettable.",
+  },
+  {
+    id: "parks-dust-pines",
+    badge: "PARKS",
+    title: "Dust & Pines",
+    subtitle: "Las Vegas → Grand Canyon → Zion / Bryce",
+    highlights: [
+      { icon: Mountain, label: "Hikes" },
+      { icon: Map, label: "Viewpoints" },
+      { icon: Car, label: "Scenic drives" },
+      { icon: Utensils, label: "BBQ" },
+    ],
+    intensity: "High",
+    budget: "$$",
+    transport: "Drive",
+    walking: "High",
+    heroNote: "Trade skyscrapers for cliffs. Sunrise earns respect.",
+  },
+];
+
+const GUIDES: GuideItem[] = [
+  {
+    key: "food",
+    title: "Food Guide",
+    desc: "Burgers, BBQ, tacos, diners — and what to order.",
+    icon: Utensils,
+    modalTitle: "Food Guide — What to Eat, Like a Local",
+    bullets: [
+      "Classic orders: burger + fries, smoked brisket, fish tacos, diner breakfast.",
+      "Tipping baseline: 18–20% for sit-down service.",
+      "Fast-casual is your friend: quick, consistent, and budget-efficient.",
+      "Plan one ‘signature meal’ per city (NYC deli / LA tacos / Vegas steak).",
+    ],
+    ctaLabel: "Open Food Guide",
+  },
+  {
+    key: "transport",
+    title: "Transportation",
+    desc: "Metro vs rental car, city passes, tips for airports.",
+    icon: Car,
+    modalTitle: "Transportation — Move Smart",
+    bullets: [
+      "East Coast cities: prioritize metro + commuter rail.",
+      "West/Parks: rental car is the default; watch parking + fuel.",
+      "Airport buffers: 2 hrs domestic, 3 hrs international (typical).",
+      "Download offline maps + keep a backup payment method.",
+    ],
+    ctaLabel: "Open Transport Guide",
+  },
+  {
+    key: "budget",
+    title: "Budget & Tips",
+    desc: "Realistic cost ranges, safety basics, and time savers.",
+    icon: DollarSign,
+    modalTitle: "Budget & Tips — Stay Sharp",
+    bullets: [
+      "Typical daily spend varies by city; NYC is premium, parks can be efficient.",
+      "Reserve must-dos early: shows, popular museums, key restaurants.",
+      "Keep copies of IDs and a simple emergency note in your phone.",
+      "Save time: group nearby sights; avoid cross-city zigzags.",
+    ],
+    ctaLabel: "Open Budget & Tips",
+  },
+];
+
+// -----------------------------
+// UI helpers
+// -----------------------------
+
+const badgeStyles: Record<TravelPlan["badge"], string> = {
+  EAST: "bg-red-600 text-white",
+  WEST: "bg-blue-700 text-white",
+  "ROAD TRIP": "bg-zinc-900 text-white",
+  PARKS: "bg-emerald-700 text-white",
+};
+
+const intensityStyles: Record<Intensity, string> = {
+  Low: "bg-zinc-100 text-zinc-900 border-zinc-200",
+  Medium: "bg-amber-50 text-amber-900 border-amber-200",
+  High: "bg-red-50 text-red-900 border-red-200",
+};
+
+function clsx(...xs: Array<string | false | null | undefined>) {
+  return xs.filter(Boolean).join(" ");
+}
+
+// -----------------------------
+// Modal (generic)
+// -----------------------------
+
+function Modal({
+  open,
+  title,
+  children,
+  onClose,
+}: {
+  open: boolean;
+  title: string;
+  children: React.ReactNode;
+  onClose: () => void;
+}) {
+  if (!open) return null;
+
+  return (
+    <div
+      className="fixed inset-0 z-[100]"
+      role="dialog"
+      aria-modal="true"
+      onMouseDown={(e) => {
+        // click outside to close
+        if (e.target === e.currentTarget) onClose();
+      }}
+    >
+      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
+      <div className="relative mx-auto mt-10 max-w-2xl px-4 pb-10">
+        <div className="rounded-[28px] border border-white/10 bg-zinc-950 shadow-2xl">
+          <div className="flex items-start justify-between gap-3 border-b border-white/10 px-6 py-5">
+            <div>
+              <div className="text-xs font-extrabold tracking-widest text-zinc-400">POP-UP</div>
+              <h4 className="mt-1 text-lg font-extrabold text-white">{title}</h4>
+            </div>
+            <button
+              onClick={onClose}
+              className="inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-white/10 bg-white/5 text-white transition hover:bg-white/10"
+              aria-label="Close"
+            >
+              <X className="h-5 w-5" />
+            </button>
+          </div>
+          <div className="px-6 py-5">{children}</div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// -----------------------------
+// Booking system (Virtual / Mock)
+// -----------------------------
+
+type BookingDraft = {
+  planId: string;
+  startDate: string;
+  travelers: number;
+  email: string;
+  notes: string;
+  slot: "Morning" | "Afternoon" | "Evening";
+  addAirportPickup: boolean;
+  addCityPass: boolean;
+  payment: "Card" | "Apple Pay" | "PayPal";
+};
+
+type BookingRecord = {
+  id: string; // confirmation code
+  planId: string;
+  planBadge: TravelPlan["badge"];
+  planTitle: string;
+  startDate: string;
+  travelers: number;
+  email: string;
+  notes: string;
+  slot: BookingDraft["slot"];
+  addons: { airportPickup: boolean; cityPass: boolean };
+  totalUSD: number;
+  createdAtISO: string;
+  status: "Confirmed";
+};
+
+const PLAN_PRICE_USD: Record<TravelPlan["badge"], number> = {
+  EAST: 129,
+  WEST: 99,
+  "ROAD TRIP": 149,
+  PARKS: 89,
+};
+
+function formatUSD(n: number) {
+  return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(n);
+}
+
+function makeConfirmationCode() {
+  // Simple virtual code; good enough for demo.
+  const a = Math.random().toString(36).slice(2, 6).toUpperCase();
+  const b = Math.random().toString(36).slice(2, 6).toUpperCase();
+  return `US-${a}-${b}`;
+}
+
+function computeTotalUSD(planBadge: TravelPlan["badge"], travelers: number, addAirportPickup: boolean, addCityPass: boolean) {
+  const base = PLAN_PRICE_USD[planBadge];
+  const group = Math.max(1, travelers);
+  const addons = (addAirportPickup ? 35 : 0) + (addCityPass ? 25 : 0);
+  // Pricing model: base per plan + small per traveler + add-ons
+  return base + group * 12 + addons;
+}
+
+function BookingModal({
+  open,
+  plans,
+  initialPlanId,
+  onClose,
+  onCreate,
+}: {
+  open: boolean;
+  plans: TravelPlan[];
+  initialPlanId: string;
+  onClose: () => void;
+  onCreate: (b: BookingRecord) => void;
+}) {
+  const [step, setStep] = useState<"form" | "review" | "success">("form");
+  const [created, setCreated] = useState<BookingRecord | null>(null);
+
+  const [draft, setDraft] = useState<BookingDraft>(() => ({
+    planId: initialPlanId || plans[0]?.id || "",
+    startDate: "",
+    travelers: 2,
+    email: "",
+    notes: "",
+    slot: "Morning",
+    addAirportPickup: false,
+    addCityPass: true,
+    payment: "Card",
+  }));
+
+  // Keep plan selection aligned when user opens booking from different plan
+  React.useEffect(() => {
+    if (!open) return;
+    setStep("form");
+    setCreated(null);
+    setDraft((d) => ({
+      ...d,
+      planId: initialPlanId || d.planId || plans[0]?.id || "",
+    }));
+  }, [open, initialPlanId, plans]);
+
+  const selected = useMemo(
+    () => plans.find((p) => p.id === draft.planId) ?? plans[0],
+    [draft.planId, plans]
+  );
+
+  const totalUSD = useMemo(() => {
+    if (!selected) return 0;
+    return computeTotalUSD(selected.badge, draft.travelers, draft.addAirportPickup, draft.addCityPass);
+  }, [selected, draft.travelers, draft.addAirportPickup, draft.addCityPass]);
+
+  const canProceed = Boolean(draft.planId && draft.startDate && draft.email && draft.travelers > 0);
+
+  const buildRecord = (): BookingRecord => ({
+    id: makeConfirmationCode(),
+    planId: selected?.id ?? draft.planId,
+    planBadge: selected?.badge ?? "EAST",
+    planTitle: selected?.title ?? "Plan",
+    startDate: draft.startDate,
+    travelers: draft.travelers,
+    email: draft.email,
+    notes: draft.notes,
+    slot: draft.slot,
+    addons: { airportPickup: draft.addAirportPickup, cityPass: draft.addCityPass },
+    totalUSD,
+    createdAtISO: new Date().toISOString(),
+    status: "Confirmed",
+  });
+
+  const closeAll = () => {
+    onClose();
+  };
+
+  return (
+    <Modal open={open} title="Booking — Virtual Reservation" onClose={closeAll}>
+      {step === "form" ? (
+        <div className="grid gap-5">
+          <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <div className="text-xs font-extrabold tracking-widest text-zinc-300">VIRTUAL MODE</div>
+                <div className="mt-2 text-sm text-zinc-300">
+                  This creates a mock confirmation (no real payment, no real availability).
+                </div>
+              </div>
+              <span className="rounded-full border border-white/10 bg-white/10 px-3 py-1 text-[11px] font-extrabold tracking-widest text-white">
+                DEMO
+              </span>
+            </div>
+          </div>
+
+          <div className="grid gap-4 md:grid-cols-2">
+            <Field label="Plan" icon={Map}>
+              <select
+                value={draft.planId}
+                onChange={(e) => setDraft((d) => ({ ...d, planId: e.target.value }))}
+                className="w-full rounded-2xl border border-white/10 bg-zinc-950 px-4 py-3 text-sm text-white outline-none focus:border-white/20"
+              >
+                {plans.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.badge} — {p.title}
+                  </option>
+                ))}
+              </select>
+            </Field>
+
+            <Field label="Start date" icon={CalendarDays}>
+              <input
+                type="date"
+                value={draft.startDate}
+                onChange={(e) => setDraft((d) => ({ ...d, startDate: e.target.value }))}
+                className="w-full rounded-2xl border border-white/10 bg-zinc-950 px-4 py-3 text-sm text-white outline-none focus:border-white/20"
+              />
+            </Field>
+
+            <Field label="Travelers" icon={Users}>
+              <input
+                type="number"
+                min={1}
+                max={12}
+                value={draft.travelers}
+                onChange={(e) => setDraft((d) => ({ ...d, travelers: Number(e.target.value || 1) }))}
+                className="w-full rounded-2xl border border-white/10 bg-zinc-950 px-4 py-3 text-sm text-white outline-none focus:border-white/20"
+              />
+            </Field>
+
+            <Field label="Email" icon={Mail}>
+              <input
+                type="email"
+                placeholder="you@example.com"
+                value={draft.email}
+                onChange={(e) => setDraft((d) => ({ ...d, email: e.target.value }))}
+                className="w-full rounded-2xl border border-white/10 bg-zinc-950 px-4 py-3 text-sm text-white outline-none focus:border-white/20"
+              />
+            </Field>
+
+            <Field label="Time slot" icon={CalendarDays}>
+              <div className="grid grid-cols-3 gap-2">
+                {(["Morning", "Afternoon", "Evening"] as const).map((s) => (
+                  <button
+                    key={s}
+                    type="button"
+                    onClick={() => setDraft((d) => ({ ...d, slot: s }))}
+                    className={clsx(
+                      "rounded-2xl px-3 py-3 text-xs font-extrabold tracking-widest transition",
+                      draft.slot === s
+                        ? "bg-white text-zinc-950"
+                        : "border border-white/10 bg-white/10 text-white hover:bg-white/15"
+                    )}
+                  >
+                    {s}
+                  </button>
+                ))}
+              </div>
+            </Field>
+
+            <Field label="Payment (virtual)" icon={CreditCard}>
+              <select
+                value={draft.payment}
+                onChange={(e) => setDraft((d) => ({ ...d, payment: e.target.value as BookingDraft["payment"] }))}
+                className="w-full rounded-2xl border border-white/10 bg-zinc-950 px-4 py-3 text-sm text-white outline-none focus:border-white/20"
+              >
+                <option value="Card">Card</option>
+                <option value="Apple Pay">Apple Pay</option>
+                <option value="PayPal">PayPal</option>
+              </select>
+            </Field>
+          </div>
+
+          <div className="grid gap-3 rounded-2xl border border-white/10 bg-zinc-950/30 p-4">
+            <div className="text-xs font-extrabold tracking-widest text-zinc-200">ADD-ONS</div>
+            <label className="flex items-center justify-between gap-3 rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
+              <div>
+                <div className="text-sm font-extrabold text-white">Airport pickup</div>
+                <div className="text-xs text-zinc-300">+ $35 (mock)</div>
+              </div>
+              <input
+                type="checkbox"
+                checked={draft.addAirportPickup}
+                onChange={(e) => setDraft((d) => ({ ...d, addAirportPickup: e.target.checked }))}
+                className="h-5 w-5"
+              />
+            </label>
+            <label className="flex items-center justify-between gap-3 rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
+              <div>
+                <div className="text-sm font-extrabold text-white">City pass</div>
+                <div className="text-xs text-zinc-300">+ $25 (mock)</div>
+              </div>
+              <input
+                type="checkbox"
+                checked={draft.addCityPass}
+                onChange={(e) => setDraft((d) => ({ ...d, addCityPass: e.target.checked }))}
+                className="h-5 w-5"
+              />
+            </label>
+          </div>
+
+          <Field label="Notes (optional)" icon={Utensils}>
+            <textarea
+              rows={3}
+              placeholder="Dietary needs, preferred vibe, must-dos..."
+              value={draft.notes}
+              onChange={(e) => setDraft((d) => ({ ...d, notes: e.target.value }))}
+              className="w-full resize-none rounded-2xl border border-white/10 bg-zinc-950 px-4 py-3 text-sm text-white outline-none focus:border-white/20"
+            />
+          </Field>
+
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="text-xs text-zinc-400">
+              Estimated total: <span className="font-extrabold text-white">{formatUSD(totalUSD)}</span>
+            </div>
+            <button
+              disabled={!canProceed}
+              onClick={() => setStep("review")}
+              className={clsx(
+                "inline-flex items-center gap-2 rounded-2xl px-5 py-3 text-sm font-extrabold shadow-xl transition",
+                canProceed
+                  ? "bg-white text-zinc-950 hover:-translate-y-0.5"
+                  : "cursor-not-allowed bg-white/20 text-white/60"
+              )}
+            >
+              Continue <ArrowRight className="h-4 w-4" />
+            </button>
+          </div>
+        </div>
+      ) : step === "review" ? (
+        <div className="grid gap-5">
+          <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+            <div className="text-xs font-extrabold tracking-widest text-zinc-300">REVIEW</div>
+            <div className="mt-2 text-base font-extrabold text-white">
+              {selected?.badge} — {selected?.title}
+            </div>
+            <div className="mt-1 text-xs text-zinc-300">{selected?.subtitle}</div>
+
+            <div className="mt-4 grid gap-2 text-sm text-zinc-200">
+              <Row k="Start" v={draft.startDate} />
+              <Row k="Slot" v={draft.slot} />
+              <Row k="Travelers" v={String(draft.travelers)} />
+              <Row k="Email" v={draft.email} />
+              <Row k="Add-ons" v={`${draft.addAirportPickup ? "Airport pickup" : "—"} • ${draft.addCityPass ? "City pass" : "—"}`} />
+              <Row k="Payment" v={`${draft.payment} (virtual)`} />
+            </div>
+
+            {draft.notes ? (
+              <div className="mt-4 rounded-2xl border border-white/10 bg-zinc-950/30 p-3 text-sm text-zinc-200">
+                <div className="text-xs font-extrabold tracking-widest text-zinc-300">NOTES</div>
+                <div className="mt-2">{draft.notes}</div>
+              </div>
+            ) : null}
+          </div>
+
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <button
+              onClick={() => setStep("form")}
+              className="rounded-2xl border border-white/10 bg-white/10 px-5 py-3 text-sm font-semibold text-white transition hover:bg-white/15"
+            >
+              Back
+            </button>
+            <button
+              onClick={() => {
+                const rec = buildRecord();
+                setCreated(rec);
+                onCreate(rec);
+                setStep("success");
+              }}
+              className="inline-flex items-center gap-2 rounded-2xl bg-white px-5 py-3 text-sm font-extrabold text-zinc-950 shadow-xl transition hover:-translate-y-0.5"
+            >
+              Confirm (virtual) <Check className="h-4 w-4" />
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div className="grid gap-5">
+          <div className="rounded-2xl border border-white/10 bg-white/5 p-5">
+            <div className="text-xs font-extrabold tracking-widest text-zinc-300">CONFIRMED</div>
+            <div className="mt-2 text-2xl font-extrabold text-white">Reservation created</div>
+            <div className="mt-3 rounded-2xl border border-white/10 bg-zinc-950/30 p-4">
+              <div className="text-xs font-extrabold tracking-widest text-zinc-300">CONFIRMATION</div>
+              <div className="mt-2 text-lg font-extrabold text-white">{created?.id}</div>
+              <div className="mt-1 text-sm text-zinc-300">
+                {created?.planBadge} — {created?.planTitle} • {created?.startDate} • {created?.slot}
+              </div>
+              <div className="mt-2 text-sm text-zinc-300">Total: {created ? formatUSD(created.totalUSD) : "—"}</div>
+            </div>
+            <div className="mt-3 text-xs text-zinc-400">
+              Virtual booking only — no real payment, no real inventory.
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <button
+              onClick={() => {
+                if (created?.id) navigator.clipboard?.writeText(created.id);
+              }}
+              className="rounded-2xl border border-white/10 bg-white/10 px-5 py-3 text-sm font-semibold text-white transition hover:bg-white/15"
+            >
+              Copy code
+            </button>
+            <button
+              onClick={closeAll}
+              className="inline-flex items-center gap-2 rounded-2xl bg-white px-5 py-3 text-sm font-extrabold text-zinc-950 shadow-xl transition hover:-translate-y-0.5"
+            >
+              Done <ArrowRight className="h-4 w-4" />
+            </button>
+          </div>
+        </div>
+      )}
+    </Modal>
+  );
+}
+
+function Row({ k, v }: { k: string; v: string }) {
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-white/10 bg-zinc-950/20 px-3 py-2">
+      <div className="text-xs font-extrabold tracking-widest text-zinc-300">{k.toUpperCase()}</div>
+      <div className="text-sm font-semibold text-white">{v}</div>
+    </div>
+  );
+}
+
+function Field({
+  label,
+  icon: Icon,
+  children,
+}: {
+  label: string;
+  icon: React.ElementType;
+  children: React.ReactNode;
+}) {
+  return (
+    <label className="grid gap-2">
+      <div className="flex items-center gap-2 text-xs font-extrabold tracking-widest text-zinc-300">
+        <Icon className="h-4 w-4" />
+        {label.toUpperCase()}
+      </div>
+      {children}
+    </label>
+  );
+}
+
+// -----------------------------
+// Components
+// -----------------------------
+
+function TopNav({ onBook }: { onBook: () => void }) {
+  return (
+    <header className="sticky top-0 z-50 border-b border-white/10 bg-zinc-950/80 backdrop-blur">
+      <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3">
+        <div className="flex items-center gap-3">
+          <div className="h-9 w-9 rounded-2xl border border-white/10 bg-zinc-900 shadow-lg" />
+          <div className="leading-tight">
+            <div className="text-sm font-semibold tracking-wide text-white">USA Travel Guide</div>
+            <div className="text-[11px] text-zinc-300">Rugged plans. Clean UI.</div>
+          </div>
+        </div>
+        <nav className="hidden items-center gap-6 text-sm text-zinc-200 md:flex">
+          <a className="hover:text-white" href="#plans">Plans</a>
+          <a className="hover:text-white" href="#compare">Compare</a>
+          <a className="hover:text-white" href="#guides">Guides</a>
+          <a className="hover:text-white" href="#book">Book</a>
+        </nav>
+        <div className="flex items-center gap-2">
+          <a
+            href="#plans"
+            className="hidden items-center gap-2 rounded-2xl border border-white/10 bg-white/10 px-4 py-2 text-sm font-semibold text-white shadow-lg transition hover:bg-white/15 md:inline-flex"
+          >
+            Explore <ArrowRight className="h-4 w-4" />
+          </a>
+          <button
+            onClick={onBook}
+            className="inline-flex items-center gap-2 rounded-2xl bg-white px-4 py-2 text-sm font-extrabold text-zinc-950 shadow-xl transition hover:-translate-y-0.5"
+          >
+            Book <ArrowRight className="h-4 w-4" />
+          </button>
+        </div>
+      </div>
+    </header>
+  );
+}
+
+function Hero({ onCompare, onBook }: { onCompare: () => void; onBook: () => void }) {
+  return (
+    <section className="relative overflow-hidden">
+      <div className="absolute inset-0">
+        {/* Faux background texture */}
+        <div className="absolute inset-0 bg-gradient-to-b from-zinc-950 via-zinc-950 to-zinc-900" />
+        <div className="absolute -left-40 -top-40 h-[520px] w-[520px] rounded-full bg-blue-700/20 blur-3xl" />
+        <div className="absolute -right-40 top-20 h-[520px] w-[520px] rounded-full bg-red-600/20 blur-3xl" />
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_30%_20%,rgba(255,255,255,0.06),transparent_55%),radial-gradient(circle_at_70%_70%,rgba(255,255,255,0.05),transparent_60%)]" />
+      </div>
+
+      <div className="relative mx-auto max-w-6xl px-4 py-14 md:py-20">
+        <div className="grid gap-10 md:grid-cols-2 md:items-center">
+          <div>
+            <div className="inline-flex items-center gap-2 rounded-2xl border border-white/10 bg-white/10 px-3 py-1 text-xs font-semibold tracking-widest text-zinc-100">
+              <span className="h-2 w-2 rounded-full bg-red-600" />
+              <span className="h-2 w-2 rounded-full bg-white" />
+              <span className="h-2 w-2 rounded-full bg-blue-700" />
+              <span className="ml-1">7D6N MASTER PLANS</span>
+            </div>
+
+            <h1 className="mt-4 text-4xl font-extrabold tracking-tight text-white md:text-5xl">
+              7 Days. One Plan.
+              <span className="block text-zinc-200">Full Send Across America.</span>
+            </h1>
+
+            <p className="mt-4 max-w-xl text-base leading-relaxed text-zinc-300">
+              Choose a coast. Pick your pace. We turn the chaos into a clean, card-based itinerary —
+              routes, food stops, sights, and practical notes.
+            </p>
+
+            <div className="mt-7 flex flex-wrap gap-3">
+              <a
+                href="#plans"
+                className="inline-flex items-center gap-2 rounded-2xl bg-white px-5 py-3 text-sm font-bold text-zinc-950 shadow-xl transition hover:-translate-y-0.5"
+              >
+                Explore Plans <ArrowRight className="h-4 w-4" />
+              </a>
+              <button
+                onClick={onCompare}
+                className="inline-flex items-center gap-2 rounded-2xl border border-white/10 bg-white/10 px-5 py-3 text-sm font-semibold text-white shadow-lg transition hover:bg-white/15"
+              >
+                Compare Plans
+              </button>
+              <button
+                onClick={onBook}
+                className="inline-flex items-center gap-2 rounded-2xl border border-white/10 bg-white/10 px-5 py-3 text-sm font-semibold text-white shadow-lg transition hover:bg-white/15"
+              >
+                Book Now
+              </button>
+            </div>
+
+            <div className="mt-8 flex flex-wrap gap-3 text-xs text-zinc-300">
+              <Pill icon={Map} label="Routes" />
+              <Pill icon={Utensils} label="Food" />
+              <Pill icon={Car} label="Transport" />
+              <Pill icon={Mountain} label="Parks" />
+            </div>
+          </div>
+
+          <div className="relative">
+            <div className="rounded-[28px] border border-white/10 bg-zinc-900/60 p-4 shadow-2xl">
+              <div className="flex items-center justify-between">
+                <div className="text-sm font-semibold text-white">Tonight’s vibe</div>
+                <div className="text-xs text-zinc-300">Hard edges. Round corners.</div>
+              </div>
+              <div className="mt-4 grid gap-3">
+                <MiniCard title="East Coast" desc="Skylines, museums, subways." badge="EAST" />
+                <MiniCard title="West Coast" desc="Coastline, car keys, sunsets." badge="WEST" />
+                <MiniCard title="Road Trip" desc="Neon nights, desert miles." badge="ROAD TRIP" />
+              </div>
+              <div className="mt-4 rounded-2xl border border-white/10 bg-zinc-950/40 p-4">
+                <div className="text-xs font-semibold tracking-wide text-zinc-200">POPULAR QUICK START</div>
+                <div className="mt-2 text-sm font-bold text-white">NYC → Philly → D.C. (7D6N)</div>
+                <div className="mt-1 text-xs text-zinc-300">Metro-friendly • High sights density • Great for first timers</div>
+              </div>
+            </div>
+            <div className="pointer-events-none absolute -bottom-6 -right-6 h-24 w-24 rounded-3xl bg-red-600/25 blur-2xl" />
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function Pill({ icon: Icon, label }: { icon: React.ElementType; label: string }) {
+  return (
+    <span className="inline-flex items-center gap-2 rounded-2xl border border-white/10 bg-white/5 px-3 py-2">
+      <Icon className="h-4 w-4" />
+      <span className="font-semibold">{label}</span>
+    </span>
+  );
+}
+
+function MiniCard({
+  title,
+  desc,
+  badge,
+}: {
+  title: string;
+  desc: string;
+  badge: TravelPlan["badge"];
+}) {
+  return (
+    <div className="rounded-2xl border border-white/10 bg-zinc-950/30 p-4">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <div className="text-sm font-bold text-white">{title}</div>
+          <div className="mt-1 text-xs text-zinc-300">{desc}</div>
+        </div>
+        <span className={clsx("rounded-full px-3 py-1 text-[11px] font-extrabold tracking-widest", badgeStyles[badge])}>
+          {badge}
+        </span>
+      </div>
+    </div>
+  );
+}
+
+function PlansSection({
+  plans,
+  onSelect,
+  onBook,
+}: {
+  plans: TravelPlan[];
+  onSelect: (id: string) => void;
+  onBook: (planId?: string) => void;
+}) {
+  return (
+    <section id="plans" className="mx-auto max-w-6xl px-4 py-14">
+      <div className="flex flex-wrap items-end justify-between gap-4">
+        <div>
+          <h2 className="text-2xl font-extrabold tracking-tight text-white">Pick your plan</h2>
+          <p className="mt-2 max-w-2xl text-sm leading-relaxed text-zinc-300">
+            East, West, Parks, or full-throttle cross-country. Each plan is a complete 7D6N blueprint
+            with routes, food stops, sights, and realistic travel notes.
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <a
+            href="#compare"
+            className="inline-flex items-center gap-2 rounded-2xl border border-white/10 bg-white/10 px-4 py-2 text-sm font-semibold text-white shadow-lg transition hover:bg-white/15"
+          >
+            Compare <ArrowRight className="h-4 w-4" />
+          </a>
+          <button
+            onClick={() => onBook()}
+            className="inline-flex items-center gap-2 rounded-2xl bg-white px-4 py-2 text-sm font-extrabold text-zinc-950 shadow-xl transition hover:-translate-y-0.5"
+          >
+            Book <ArrowRight className="h-4 w-4" />
+          </button>
+        </div>
+      </div>
+
+      <div className="mt-8 grid gap-5 md:grid-cols-2">
+        {plans.map((p) => (
+          <PlanCard key={p.id} plan={p} onSelect={() => onSelect(p.id)} onBook={() => onBook(p.id)} />
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function PlanCard({
+  plan,
+  onSelect,
+  onBook,
+}: {
+  plan: TravelPlan;
+  onSelect: () => void;
+  onBook: () => void;
+}) {
+  return (
+    <article className="group relative overflow-hidden rounded-[28px] border border-white/10 bg-zinc-900/50 shadow-2xl transition hover:-translate-y-1">
+      <div className="absolute inset-0 opacity-0 transition group-hover:opacity-100">
+        <div className="absolute -left-10 -top-10 h-44 w-44 rounded-full bg-blue-700/20 blur-2xl" />
+        <div className="absolute -right-10 top-10 h-44 w-44 rounded-full bg-red-600/20 blur-2xl" />
+      </div>
+
+      <div className="relative p-6">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <div className="text-lg font-extrabold tracking-tight text-white">
+              {plan.badge} — {plan.title}
+            </div>
+            <div className="mt-1 text-sm text-zinc-300">{plan.subtitle}</div>
+          </div>
+          <span className={clsx("rounded-full px-3 py-1 text-[11px] font-extrabold tracking-widest", badgeStyles[plan.badge])}>
+            {plan.badge}
+          </span>
+        </div>
+
+        <p className="mt-4 text-sm leading-relaxed text-zinc-300">{plan.heroNote}</p>
+
+        <div className="mt-5 flex flex-wrap gap-2">
+          <Metric icon={DollarSign} label={plan.budget} />
+          <Metric
+            icon={plan.transport === "Drive" ? Car : plan.transport === "Metro/Train" ? Train : Map}
+            label={plan.transport}
+          />
+          <Metric icon={Footprints} label={`Walking: ${plan.walking}`} />
+          <span
+            className={clsx(
+              "inline-flex items-center gap-2 rounded-2xl border px-3 py-2 text-xs font-semibold",
+              intensityStyles[plan.intensity]
+            )}
+          >
+            <Check className="h-4 w-4" />
+            Intensity: {plan.intensity}
+          </span>
+        </div>
+
+        <div className="mt-6 grid grid-cols-2 gap-3">
+          {plan.highlights.map((h, idx) => (
+            <div
+              key={idx}
+              className="flex items-center gap-3 rounded-2xl border border-white/10 bg-zinc-950/30 px-3 py-3"
+            >
+              <h.icon className="h-5 w-5 text-zinc-100" />
+              <div className="text-xs font-semibold text-zinc-100">{h.label}</div>
+            </div>
+          ))}
+        </div>
+
+        <div className="mt-6 flex flex-wrap items-center justify-between gap-3">
+          <div className="flex flex-wrap gap-2">
+            <button
+              onClick={onSelect}
+              className="inline-flex items-center gap-2 rounded-2xl bg-white px-5 py-3 text-sm font-bold text-zinc-950 shadow-xl transition hover:-translate-y-0.5"
+            >
+              View Itinerary <ArrowRight className="h-4 w-4" />
+            </button>
+            <button
+              onClick={onBook}
+              className="inline-flex items-center gap-2 rounded-2xl border border-white/10 bg-white/10 px-5 py-3 text-sm font-semibold text-white shadow-lg transition hover:bg-white/15"
+            >
+              Book
+            </button>
+          </div>
+          <div className="text-xs text-zinc-300">7D6N • Food • Sights • Notes</div>
+        </div>
+      </div>
+
+      <div className="relative h-1 w-full bg-gradient-to-r from-blue-700 via-white/30 to-red-600" />
+    </article>
+  );
+}
+
+function Metric({ icon: Icon, label }: { icon: React.ElementType; label: string }) {
+  return (
+    <span className="inline-flex items-center gap-2 rounded-2xl border border-white/10 bg-white/5 px-3 py-2 text-xs font-semibold text-zinc-100">
+      <Icon className="h-4 w-4" />
+      {label}
+    </span>
+  );
+}
+
+function CompareSection({ plans }: { plans: TravelPlan[] }) {
+  const [active, setActive] = useState(plans[0]?.id);
+  const current = useMemo(() => plans.find((p) => p.id === active) ?? plans[0], [active, plans]);
+
+  return (
+    <section id="compare" className="mx-auto max-w-6xl px-4 pb-14">
+      <div className="rounded-[28px] border border-white/10 bg-zinc-900/40 p-6 shadow-2xl">
+        <div className="flex flex-wrap items-end justify-between gap-4">
+          <div>
+            <h3 className="text-xl font-extrabold tracking-tight text-white">Compare plans</h3>
+            <p className="mt-2 max-w-2xl text-sm text-zinc-300">
+              Quick filters for decision-making. (We can later upgrade this into a full comparison table.)
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {plans.map((p) => (
+              <button
+                key={p.id}
+                onClick={() => setActive(p.id)}
+                className={clsx(
+                  "rounded-full px-4 py-2 text-xs font-extrabold tracking-widest transition",
+                  active === p.id
+                    ? "bg-white text-zinc-950"
+                    : "border border-white/10 bg-white/10 text-white hover:bg-white/15"
+                )}
+              >
+                {p.badge}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="mt-6 grid gap-5 md:grid-cols-3">
+          <CompareTile title="Budget" value={current.budget} icon={DollarSign} />
+          <CompareTile
+            title="Transport"
+            value={current.transport}
+            icon={current.transport === "Drive" ? Car : current.transport === "Metro/Train" ? Train : Map}
+          />
+          <CompareTile title="Walking" value={current.walking} icon={Footprints} />
+        </div>
+
+        <div className="mt-6 rounded-2xl border border-white/10 bg-zinc-950/30 p-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <div className="text-sm font-extrabold text-white">
+                {current.badge} — {current.title}
+              </div>
+              <div className="mt-1 text-xs text-zinc-300">{current.subtitle}</div>
+            </div>
+            <span className={clsx("rounded-full px-3 py-1 text-[11px] font-extrabold tracking-widest", badgeStyles[current.badge])}>
+              {current.badge}
+            </span>
+          </div>
+          <div className="mt-3 text-sm text-zinc-300">{current.heroNote}</div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function CompareTile({
+  title,
+  value,
+  icon: Icon,
+}: {
+  title: string;
+  value: string;
+  icon: React.ElementType;
+}) {
+  return (
+    <div className="rounded-2xl border border-white/10 bg-zinc-950/30 p-4">
+      <div className="flex items-center gap-2 text-xs font-extrabold tracking-widest text-zinc-200">
+        <Icon className="h-4 w-4" />
+        {title.toUpperCase()}
+      </div>
+      <div className="mt-3 text-lg font-extrabold text-white">{value}</div>
+    </div>
+  );
+}
+
+function GuidesSection({ onOpenGuide }: { onOpenGuide: (key: GuideItem["key"]) => void }) {
+  return (
+    <section id="guides" className="mx-auto max-w-6xl px-4 pb-16">
+      <div className="flex flex-wrap items-end justify-between gap-4">
+        <div>
+          <h3 className="text-xl font-extrabold tracking-tight text-white">Guides</h3>
+          <p className="mt-2 max-w-2xl text-sm text-zinc-300">
+            Tap a guide to open a quick pop-up. Later we can route each into full pages.
+          </p>
+        </div>
+      </div>
+
+      <div className="mt-7 grid gap-5 md:grid-cols-3">
+        {GUIDES.map((it) => (
+          <div key={it.key} className="rounded-[28px] border border-white/10 bg-zinc-900/40 p-6 shadow-2xl">
+            <div className="inline-flex h-12 w-12 items-center justify-center rounded-2xl border border-white/10 bg-white/10">
+              <it.icon className="h-6 w-6 text-white" />
+            </div>
+            <div className="mt-4 text-base font-extrabold text-white">{it.title}</div>
+            <div className="mt-2 text-sm leading-relaxed text-zinc-300">{it.desc}</div>
+            <button
+              onClick={() => onOpenGuide(it.key)}
+              className="mt-5 inline-flex items-center gap-2 rounded-2xl border border-white/10 bg-white/10 px-4 py-2 text-sm font-semibold text-white transition hover:bg-white/15"
+            >
+              Open <ArrowRight className="h-4 w-4" />
+            </button>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function BookSection({ onBook }: { onBook: () => void }) {
+  return (
+    <section id="book" className="mx-auto max-w-6xl px-4 pb-16">
+      <div className="rounded-[28px] border border-white/10 bg-zinc-900/40 p-6 shadow-2xl">
+        <div className="flex flex-wrap items-end justify-between gap-4">
+          <div>
+            <div className="text-xs font-extrabold tracking-widest text-zinc-300">BOOKING</div>
+            <h3 className="mt-2 text-xl font-extrabold tracking-tight text-white">Reserve your trip</h3>
+            <p className="mt-2 max-w-2xl text-sm text-zinc-300">
+              Start with a booking request. Next step: real checkout (Stripe) + availability + email confirmation.
+            </p>
+          </div>
+          <button
+            onClick={onBook}
+            className="inline-flex items-center gap-2 rounded-2xl bg-white px-5 py-3 text-sm font-extrabold text-zinc-950 shadow-xl transition hover:-translate-y-0.5"
+          >
+            Open booking <ArrowRight className="h-4 w-4" />
+          </button>
+        </div>
+
+        <div className="mt-6 grid gap-4 md:grid-cols-3">
+          <Step icon={CalendarDays} title="Pick dates" desc="Select a start date that fits your schedule." />
+          <Step icon={Users} title="Add travelers" desc="Tell us how many people, we tailor the plan." />
+          <Step icon={CreditCard} title="Checkout" desc="(Later) Pay deposit and lock in reservations." />
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function Step({ icon: Icon, title, desc }: { icon: React.ElementType; title: string; desc: string }) {
+  return (
+    <div className="rounded-2xl border border-white/10 bg-zinc-950/30 p-4">
+      <div className="inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-white/10 bg-white/10">
+        <Icon className="h-5 w-5 text-white" />
+      </div>
+      <div className="mt-3 text-sm font-extrabold text-white">{title}</div>
+      <div className="mt-1 text-xs leading-relaxed text-zinc-300">{desc}</div>
+    </div>
+  );
+}
+
+function Footer() {
+  return (
+    <footer id="tips" className="border-t border-white/10 bg-zinc-950">
+      <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-4 px-4 py-10">
+        <div>
+          <div className="text-sm font-extrabold text-white">USA Travel Guide</div>
+          <div className="mt-1 text-xs text-zinc-400">Save plans • Share links • Export PDF (next)</div>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <button className="rounded-2xl border border-white/10 bg-white/10 px-4 py-2 text-sm font-semibold text-white transition hover:bg-white/15">
+            Bookmark
+          </button>
+          <button className="rounded-2xl bg-white px-4 py-2 text-sm font-extrabold text-zinc-950 shadow-xl transition hover:-translate-y-0.5">
+            Save as PDF
+          </button>
+        </div>
+      </div>
+    </footer>
+  );
+}
+
+// -----------------------------
+// Page
+// -----------------------------
+
+export default function HomePage() {
+  const [selectedPlanId, setSelectedPlanId] = useState<string>(PLANS[0]?.id ?? "");
+
+  // Guide modal
+  const [guideOpen, setGuideOpen] = useState(false);
+  const [activeGuideKey, setActiveGuideKey] = useState<GuideItem["key"]>("food");
+
+  // Booking modal
+  const [bookingOpen, setBookingOpen] = useState(false);
+  const [bookingPlanId, setBookingPlanId] = useState<string>(PLANS[0]?.id ?? "");
+
+  // Virtual bookings (stored locally)
+  const [bookings, setBookings] = useState<BookingRecord[]>(() => {
+    try {
+      const raw = localStorage.getItem("usa_travel_virtual_bookings");
+      return raw ? (JSON.parse(raw) as BookingRecord[]) : [];
+    } catch {
+      return [];
+    }
+  });
+
+  const scrollToCompare = () => {
+    const el = document.getElementById("compare");
+    el?.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
+
+  const openGuide = (key: GuideItem["key"]) => {
+    setActiveGuideKey(key);
+    setGuideOpen(true);
+  };
+
+  const openBooking = (planId?: string) => {
+    setBookingPlanId(planId ?? bookingPlanId ?? PLANS[0]?.id ?? "");
+    setBookingOpen(true);
+  };
+
+  const addBooking = (b: BookingRecord) => {
+    setBookings((prev) => {
+      const next = [b, ...prev].slice(0, 10);
+      try {
+        localStorage.setItem("usa_travel_virtual_bookings", JSON.stringify(next));
+      } catch {
+        // ignore storage errors
+      }
+      return next;
+    });
+  };
+
+  const onSelectPlan = (id: string) => {
+    setSelectedPlanId(id);
+    // Placeholder routing behavior: scroll to compare to keep UX tight
+    scrollToCompare();
+  };
+
+  const selected = useMemo(
+    () => PLANS.find((p) => p.id === selectedPlanId) ?? PLANS[0],
+    [selectedPlanId]
+  );
+
+  const activeGuide = useMemo(
+    () => GUIDES.find((g) => g.key === activeGuideKey) ?? GUIDES[0],
+    [activeGuideKey]
+  );
+
+  return (
+    <div className="min-h-screen bg-zinc-950 text-white">
+      <TopNav onBook={() => openBooking()} />
+      <Hero onCompare={scrollToCompare} onBook={() => openBooking()} />
+
+      <PlansSection plans={PLANS} onSelect={onSelectPlan} onBook={openBooking} />
+      <CompareSection plans={PLANS} />
+      <GuidesSection onOpenGuide={openGuide} />
+      <BookSection onBook={() => openBooking(selected?.id)} />
+
+      {/* Virtual bookings list */}
+      <section className="mx-auto max-w-6xl px-4 pb-16">
+        <div className="rounded-[28px] border border-white/10 bg-zinc-900/40 p-6 shadow-2xl">
+          <div className="flex flex-wrap items-end justify-between gap-4">
+            <div>
+              <div className="text-xs font-extrabold tracking-widest text-zinc-300">MY BOOKINGS</div>
+              <h3 className="mt-2 text-xl font-extrabold tracking-tight text-white">Virtual reservations</h3>
+              <p className="mt-2 max-w-2xl text-sm text-zinc-300">
+                Saved in your browser only. Use this to demo the product flow.
+              </p>
+            </div>
+            <button
+              onClick={() => {
+                setBookings([]);
+                try {
+                  localStorage.removeItem("usa_travel_virtual_bookings");
+                } catch {
+                  // ignore
+                }
+              }}
+              className="rounded-2xl border border-white/10 bg-white/10 px-4 py-2 text-sm font-semibold text-white transition hover:bg-white/15"
+            >
+              Clear
+            </button>
+          </div>
+
+          {bookings.length === 0 ? (
+            <div className="mt-6 rounded-2xl border border-white/10 bg-zinc-950/30 p-5 text-sm text-zinc-300">
+              No bookings yet. Click <span className="font-semibold text-white">Book</span> to create a virtual confirmation.
+            </div>
+          ) : (
+            <div className="mt-6 grid gap-3">
+              {bookings.map((b) => (
+                <div key={b.id} className="rounded-2xl border border-white/10 bg-zinc-950/30 p-4">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                      <div className="text-sm font-extrabold text-white">
+                        {b.planBadge} — {b.planTitle}
+                      </div>
+                      <div className="mt-1 text-xs text-zinc-300">
+                        {b.startDate} • {b.slot} • {b.travelers} travelers • {b.status}
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <div className="text-xs font-extrabold tracking-widest text-zinc-300">CODE</div>
+                      <div className="text-sm font-extrabold text-white">{b.id}</div>
+                      <div className="mt-1 text-xs text-zinc-300">{formatUSD(b.totalUSD)}</div>
+                    </div>
+                  </div>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <button
+                      onClick={() => navigator.clipboard?.writeText(b.id)}
+                      className="rounded-2xl border border-white/10 bg-white/10 px-4 py-2 text-sm font-semibold text-white transition hover:bg-white/15"
+                    >
+                      Copy
+                    </button>
+                    <button
+                      onClick={() => openBooking(b.planId)}
+                      className="rounded-2xl bg-white px-4 py-2 text-sm font-extrabold text-zinc-950 shadow-xl transition hover:-translate-y-0.5"
+                    >
+                      Book again
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </section>
+
+      {/* Example placeholder: where you would route to /trips/:id */}
+      <section className="mx-auto max-w-6xl px-4 pb-14">
+        <div className="rounded-[28px] border border-white/10 bg-zinc-900/40 p-6 shadow-2xl">
+          <div className="text-xs font-extrabold tracking-widest text-zinc-200">NEXT PAGE HOOK</div>
+          <div className="mt-3 text-lg font-extrabold text-white">
+            Selected plan: {selected.badge} — {selected.title}
+          </div>
+          <div className="mt-2 text-sm text-zinc-300">
+            When you’re ready, we’ll create a route like{" "}
+            <span className="font-semibold text-white">/trips/{selected.id}</span> and render the full 7D6N itinerary
+            from JSON.
+          </div>
+          <div className="mt-5 flex flex-wrap gap-3">
+            <button className="rounded-2xl bg-white px-5 py-3 text-sm font-extrabold text-zinc-950 shadow-xl">
+              Build /trips/:id
+            </button>
+            <button
+              onClick={() => openBooking(selected.id)}
+              className="rounded-2xl border border-white/10 bg-white/10 px-5 py-3 text-sm font-semibold text-white transition hover:bg-white/15"
+            >
+              Book this plan
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <Footer />
+
+      {/* Guides Modal */}
+      <Modal open={guideOpen} title={activeGuide.modalTitle} onClose={() => setGuideOpen(false)}>
+        <div className="grid gap-4">
+          <p className="text-sm text-zinc-300">{activeGuide.desc}</p>
+          <ul className="grid gap-2">
+            {activeGuide.bullets.map((b, i) => (
+              <li key={i} className="flex gap-3 rounded-2xl border border-white/10 bg-white/5 p-3 text-sm text-zinc-200">
+                <span className="mt-1 h-2 w-2 shrink-0 rounded-full bg-white/70" />
+                <span>{b}</span>
+              </li>
+            ))}
+          </ul>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="text-xs text-zinc-400">Next: convert this into a full page with categorized sections.</div>
+            <button
+              onClick={() => alert("Guide page routing (stub)")}
+              className="inline-flex items-center gap-2 rounded-2xl bg-white px-5 py-3 text-sm font-extrabold text-zinc-950 shadow-xl transition hover:-translate-y-0.5"
+            >
+              {activeGuide.ctaLabel} <ArrowRight className="h-4 w-4" />
+            </button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Booking Modal */}
+      <BookingModal
+        open={bookingOpen}
+        plans={PLANS}
+        initialPlanId={bookingPlanId}
+        onClose={() => setBookingOpen(false)}
+        onCreate={addBooking}
+      />
+    </div>
+  );
+}
